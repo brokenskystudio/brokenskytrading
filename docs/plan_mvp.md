@@ -109,10 +109,11 @@ brokenskytrading/
       main.py
     tests/
   docs/
+    plan_mvp.md
+    plan_full_app.md
+    theme_standard.md
   .env.example
   README.md
-  plan_mvp.md
-  plan_full_app.mb
 ```
 
 ## 7. Data Model
