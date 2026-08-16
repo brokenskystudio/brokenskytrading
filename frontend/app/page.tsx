@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const brandPalette = { background: "#140A0D", surface: "#261116", line: "#4D242A", ink: "#FFF4E8", muted: "#BCA49A", accent: "#F6C453", danger: "#FB7185" };
+const brandPalette = { background: "#F3E9D8", surface: "#E5D4BA", line: "#B99B78", ink: "#241A14", muted: "#634D3B", accent: "#854719", danger: "#963B2F" };
 
 type Portfolio = {
   id: number;
@@ -35,7 +35,7 @@ export default function Home() {
   const totalHoldings = portfolios.reduce((total, portfolio) => total + portfolio.holdings.length, 0);
 
   return (
-    <main className="shell dashboard-shell" style={{ "--page-background": brandPalette.background, "--surface": brandPalette.surface, "--line": brandPalette.line, "--ink": brandPalette.ink, "--muted": brandPalette.muted, "--accent": brandPalette.accent, "--danger": brandPalette.danger } as React.CSSProperties}>
+    <main className="shell dashboard-shell" style={{ "--page-background": brandPalette.background, "--surface": brandPalette.surface, "--line": brandPalette.line, "--ink": brandPalette.ink, "--muted": brandPalette.muted, "--accent": brandPalette.accent, "--danger": brandPalette.danger, "--button-ink": "#FFF8ED" } as React.CSSProperties}>
       <div className="studio-bar">
         <a className="brand" href="https://brokensky.studio" target="_blank" rel="noreferrer" aria-label="Broken Sky Studio website">
           <span className="brand-mark">BSS</span>

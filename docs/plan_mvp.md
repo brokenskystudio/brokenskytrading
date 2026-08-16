@@ -109,10 +109,11 @@ brokenskytrading/
       main.py
     tests/
   docs/
+    plan_mvp.md
+    plan_full_app.md
+    theme_standard.md
   .env.example
   README.md
-  plan_mvp.md
-  plan_full_app.mb
 ```
 
 ## 7. Data Model
@@ -314,7 +315,7 @@ SQLite decision: the MVP intentionally has no external database service. SQLAlch
 
 Acceptance: a user can create, edit, save, reload, and delete local portfolio holdings.
 
-Current status: portfolio and holding SQLAlchemy models, SQLite table creation, validated CRUD API routes, the frontend portfolio editor, isolated in-memory SQLite CRUD tests, a local security catalog with autocomplete and validation, and a yfinance-backed quote adapter are implemented. The quote adapter is explicitly local-only and replaceable.
+Current status: portfolio and holding SQLAlchemy models, SQLite table creation, validated CRUD API routes, the frontend portfolio editor, isolated in-memory SQLite CRUD tests, a local security catalog with autocomplete and validation, a yfinance-backed quote adapter, deterministic analysis preview, saved analysis history, and a bounded local explanation provider are implemented. The quote adapter is explicitly local-only and replaceable.
 
 ### Phase 3: Market Data and Metrics
 

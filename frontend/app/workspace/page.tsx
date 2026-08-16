@@ -33,7 +33,8 @@ type SecuritySuggestion = {
   exchange: string;
   asset_type: string;
 };
-type Analysis = { total_value: string; cash_value: string; cash_percent: string; invested_value: string; total_gain_loss: string; positions: { symbol: string; allocation_percent: string; gain_loss: string }[]; alerts: { severity: string; message: string }[]; missing_symbols: string[] };
+type Analysis = { total_value: string; cash_value: string; cash_percent: string; invested_value: string; total_gain_loss: string; positions: { symbol: string; allocation_percent: string; gain_loss: string }[]; alerts: { severity: string; message: string }[]; missing_symbols: string[]; summary: string; recommendations: { action: string; symbol: string | null; reason: string; risks: string[]; confidence: string }[] };
+type AnalysisHistoryEntry = { id: number; created_at: string; data_as_of: string; market_provider: string; metrics: Analysis };
 
 type Portfolio = {
   id: number;
@@ -52,22 +53,14 @@ type Palette = {
   muted: string;
   accent: string;
   danger: string;
+  buttonInk: string;
+  inputBackground: string;
+  inputInk: string;
 };
 
 const palettes: Palette[] = [
-  { name: "Midnight Terminal", background: "#080B12", surface: "#111827", line: "#263247", ink: "#E5E7EB", muted: "#8B98AA", accent: "#5EEAD4", danger: "#FB7185" },
-  { name: "Deep Navy + Amber", background: "#0B1120", surface: "#151F35", line: "#2A3958", ink: "#F8FAFC", muted: "#94A3B8", accent: "#FBBF24", danger: "#F87171" },
-  { name: "Carbon + Electric Blue", background: "#0A0A0B", surface: "#17181B", line: "#303238", ink: "#F4F4F5", muted: "#A1A1AA", accent: "#38BDF8", danger: "#FB7185" },
-  { name: "Forest Research", background: "#08110D", surface: "#102019", line: "#244234", ink: "#E8F5EC", muted: "#91A99A", accent: "#86EFAC", danger: "#FCA5A5" },
-  { name: "Plum + Coral", background: "#110D16", surface: "#1D1524", line: "#3B2A47", ink: "#F5EEF8", muted: "#AA9CAF", accent: "#F0ABFC", danger: "#FB7185" },
-  { name: "Graphite + Lime", background: "#0D0F0D", surface: "#171916", line: "#34382D", ink: "#F2F0E8", muted: "#92958A", accent: "#D7FF62", danger: "#FF9078" },
-  { name: "Obsidian + Violet", background: "#0D0B14", surface: "#181326", line: "#332650", ink: "#F2EEFF", muted: "#A59BBE", accent: "#A78BFA", danger: "#FB7185" },
-  { name: "Arctic Signal", background: "#081116", surface: "#10232B", line: "#24424D", ink: "#E7F8FC", muted: "#8DABB3", accent: "#67E8F9", danger: "#FDA4AF" },
-  { name: "Rust + Sand", background: "#15100D", surface: "#241A15", line: "#4B3226", ink: "#FFF3E7", muted: "#BDA393", accent: "#FDBA74", danger: "#F87171" },
-  { name: "Cobalt + Mint", background: "#080D1A", surface: "#111D35", line: "#263F6E", ink: "#EEF4FF", muted: "#94A9CC", accent: "#6EE7B7", danger: "#FB7185" },
-  { name: "Burgundy + Rose", background: "#160A10", surface: "#28121C", line: "#512535", ink: "#FFF0F3", muted: "#BFA0A9", accent: "#FDA4AF", danger: "#FCA5A5" },
-  { name: "Burgundy + Gold", background: "#140A0D", surface: "#261116", line: "#4D242A", ink: "#FFF4E8", muted: "#BCA49A", accent: "#F6C453", danger: "#FB7185" },
-  { name: "Wine + Blush", background: "#12080F", surface: "#24101E", line: "#4A2039", ink: "#FFF1F7", muted: "#BDA0B0", accent: "#F9A8D4", danger: "#FDA4AF" },
+  { name: "Coffee Cream", background: "#F3E9D8", surface: "#E5D4BA", line: "#B99B78", ink: "#241A14", muted: "#634D3B", accent: "#854719", danger: "#963B2F", buttonInk: "#FFF8ED", inputBackground: "#FFFDF8", inputInk: "#241A14" },
+  { name: "Coffee + Slate", background: "#10151A", surface: "#1E252B", line: "#3B4A52", ink: "#EEF2F0", muted: "#A4B0AE", accent: "#D7A56D", danger: "#E98578", buttonInk: "#241A14", inputBackground: "#0B1014", inputInk: "#EEF2F0" },
 ];
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -101,7 +94,10 @@ export default function Home() {
   const [buyForm, setBuyForm] = useState({ quantity: "", price: "", notes: "" });
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [selectedPalette, setSelectedPalette] = useState(palettes[11]);
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryEntry[]>([]);
+  const [selectedAnalysisId, setSelectedAnalysisId] = useState<number | null>(null);
+  const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
+  const selectedPalette = palettes[themeMode === "light" ? 0 : 1];
 
   const selectedPortfolio = portfolios.find((portfolio) => portfolio.id === selectedId) ?? null;
   const holdingsMarketValue = selectedPortfolio?.holdings.reduce((total, holding) => {
@@ -144,8 +140,14 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const savedTheme = window.localStorage.getItem("trading-research-theme");
+    if (savedTheme === "dark") setThemeMode("dark");
+  }, []);
+
+  useEffect(() => {
     if (!selectedId) return;
     void loadQuotes(selectedId);
+    request<AnalysisHistoryEntry[]>(`/portfolios/${selectedId}/analyses`).then(setAnalysisHistory).catch(() => setAnalysisHistory([]));
   }, [selectedId]);
 
   useEffect(() => {
@@ -279,12 +281,22 @@ export default function Home() {
     if (!selectedPortfolio) return;
     setAnalysisLoading(true);
     try {
-      setAnalysis(await request<Analysis>(`/portfolios/${selectedPortfolio.id}/analysis-preview`));
+      const result = await request<{ id: number; metrics: Analysis }>(`/portfolios/${selectedPortfolio.id}/analyze`, { method: "POST" });
+      setAnalysis(result.metrics);
+      setSelectedAnalysisId(result.id);
+      const history = await request<AnalysisHistoryEntry[]>(`/portfolios/${selectedPortfolio.id}/analyses`);
+      setAnalysisHistory(history);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not analyze portfolio.");
     } finally {
       setAnalysisLoading(false);
     }
+  }
+
+  function toggleTheme() {
+    const nextTheme = themeMode === "light" ? "dark" : "light";
+    setThemeMode(nextTheme);
+    window.localStorage.setItem("trading-research-theme", nextTheme);
   }
 
   async function removePortfolio() {
@@ -301,7 +313,7 @@ export default function Home() {
   }
 
   return (
-    <main className="shell" style={{ "--page-background": selectedPalette.background, "--surface": selectedPalette.surface, "--line": selectedPalette.line, "--ink": selectedPalette.ink, "--muted": selectedPalette.muted, "--accent": selectedPalette.accent, "--danger": selectedPalette.danger } as React.CSSProperties}>
+    <main className="shell" style={{ "--page-background": selectedPalette.background, "--surface": selectedPalette.surface, "--line": selectedPalette.line, "--ink": selectedPalette.ink, "--muted": selectedPalette.muted, "--accent": selectedPalette.accent, "--danger": selectedPalette.danger, "--button-ink": selectedPalette.buttonInk, "--input-background": selectedPalette.inputBackground, "--input-ink": selectedPalette.inputInk } as React.CSSProperties}>
       <div className="studio-bar">
         <a className="brand" href="/" aria-label="Go to Trading Research home">
           <span className="brand-mark">BSS</span>
@@ -314,7 +326,7 @@ export default function Home() {
           <p className="eyebrow">BROKEN SKY STUDIO / LOCAL RESEARCH WORKSPACE</p>
           <h1>Trading Research</h1>
         </div>
-        <p className="disclaimer">Informational research only.<br />No trade execution.</p>
+        <div className="header-tools"><div className="theme-controls"><button className="theme-toggle" onClick={toggleTheme} aria-label={themeMode === "light" ? "Switch to dark theme" : "Switch to light theme"} title={themeMode === "light" ? "Switch to dark theme" : "Switch to light theme"}>{themeMode === "light" ? <svg className="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.2A8.5 8.5 0 0 1 8.8 3.5 8.5 8.5 0 1 0 20.5 15.2Z" /></svg> : <svg className="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>}</button><div className="theme-previews" aria-label="Moon icon previews"><span title="Classic crescent"><svg viewBox="0 0 24 24"><path d="M20.5 15.2A8.5 8.5 0 0 1 8.8 3.5 8.5 8.5 0 1 0 20.5 15.2Z" /></svg></span><span title="Outlined crescent"><svg viewBox="0 0 24 24"><path d="M18.5 16.2A7.5 7.5 0 0 1 8.2 5.5 7.5 7.5 0 1 0 18.5 16.2Z" /></svg></span><span title="Moon and star"><svg viewBox="0 0 24 24"><path d="M19.5 15.5A7.5 7.5 0 0 1 8.5 5 7.5 7.5 0 1 0 19.5 15.5Z" /><path d="m17.5 4 .4 1.1L19 5.5l-1.1.4-.4 1.1-.4-1.1-1.1-.4 1.1-.4.4-1.1Z" /></svg></span><span title="Eclipse"><svg viewBox="0 0 24 24"><circle cx="10" cy="12" r="6" /><circle cx="14" cy="10" r="6" /></svg></span><span title="Horizon moon"><svg viewBox="0 0 24 24"><path d="M5 15a7 7 0 0 0 14 0" /><path d="M3 18h18" /></svg></span></div></div><p className="disclaimer">Informational research only.<br />No trade execution.</p></div>
       </header>
 
       {error && <div className="error" role="alert">{error}</div>}
@@ -336,13 +348,6 @@ export default function Home() {
             <input required placeholder="Portfolio name" value={newPortfolioName} onChange={(event) => setNewPortfolioName(event.target.value)} />
             <button className="primary" disabled={saving}>Create portfolio</button>
           </form>
-          <div className="palette-lab">
-            <div className="section-heading"><span>PALETTE LAB</span><span>TEMP</span></div>
-            <p className="muted">Preview a visual direction. This choice is not saved.</p>
-            <div className="palette-list">
-              {palettes.map((palette) => <button className={`palette-card ${palette.name === selectedPalette.name ? "active" : ""}`} key={palette.name} onClick={() => setSelectedPalette(palette)}><span className="swatches"><i style={{ background: palette.background }} /><i style={{ background: palette.surface }} /><i style={{ background: palette.accent }} /><i style={{ background: palette.danger }} /></span><strong>{palette.name}</strong></button>)}
-            </div>
-          </div>
         </aside>
 
         <section className="content">
@@ -352,9 +357,9 @@ export default function Home() {
             <>
               <div className="content-header"><div><p className="eyebrow">PORTFOLIO / {selectedPortfolio.id.toString().padStart(3, "0")}</p><h2>{selectedPortfolio.name}</h2></div><div className="header-actions"><button className="primary small" onClick={analyzePortfolio} disabled={analysisLoading}>{analysisLoading ? "Analyzing..." : "Analyze portfolio"}</button><button className="quiet danger" onClick={removePortfolio}>Delete portfolio</button></div></div>
               <div className="value-summary"><div><span>CURRENT VALUE</span><strong>${Number(currentPortfolioValue).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></div><div><span>POSITIONS VALUE</span><strong>${holdingsMarketValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></div><div><span>CASH</span><strong>${Number(selectedPortfolio.cash_balance).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></div></div>
-              {analysis && <section className="analysis-panel"><div className="section-heading"><span>DETERMINISTIC ANALYSIS</span><span>PREVIEW</span></div><div className="analysis-summary"><div><span>TOTAL GAIN / LOSS</span><strong className={Number(analysis.total_gain_loss) >= 0 ? "positive" : "negative"}>${Number(analysis.total_gain_loss).toFixed(2)}</strong></div><div><span>CASH ALLOCATION</span><strong>{Number(analysis.cash_percent).toFixed(2)}%</strong></div><div><span>ALERTS</span><strong>{analysis.alerts.length}</strong></div></div>{analysis.alerts.length > 0 && <div className="alerts">{analysis.alerts.map((alert, index) => <p className={`alert ${alert.severity}`} key={`${alert.message}-${index}`}>{alert.message}</p>)}</div>}{analysis.missing_symbols.length > 0 && <p className="muted">Missing market data: {analysis.missing_symbols.join(", ")}</p>}<div className="allocation-list">{analysis.positions.map((position) => <div key={position.symbol}><strong>{position.symbol}</strong><span>{Number(position.allocation_percent).toFixed(2)}% allocation · ${Number(position.gain_loss).toFixed(2)} gain/loss</span></div>)}</div></section>}
+              {analysis && <section className="analysis-panel"><div className="section-heading"><span>DETERMINISTIC ANALYSIS</span><span>{selectedAnalysisId === analysisHistory[0]?.id ? "LATEST" : "SAVED"}</span></div><p className="analysis-summary-text">{analysis.summary}</p><div className="analysis-summary"><div><span>TOTAL GAIN / LOSS</span><strong className={Number(analysis.total_gain_loss) >= 0 ? "positive" : "negative"}>${Number(analysis.total_gain_loss).toFixed(2)}</strong></div><div><span>CASH ALLOCATION</span><strong>{Number(analysis.cash_percent).toFixed(2)}%</strong></div><div><span>ALERTS</span><strong>{analysis.alerts.length}</strong></div></div>{analysis.alerts.length > 0 && <div className="alerts">{analysis.alerts.map((alert, index) => <p className={`alert ${alert.severity}`} key={`${alert.message}-${index}`}>{alert.message}</p>)}</div>}{analysis.recommendations.length > 0 && <div className="recommendations"><div className="section-heading"><span>RESEARCH CANDIDATES</span><span>RULE-BASED</span></div>{analysis.recommendations.map((recommendation, index) => <div className="recommendation" key={`${recommendation.symbol}-${index}`}><div><strong>{recommendation.action} {recommendation.symbol ?? ""}</strong><span>{recommendation.reason}</span></div><small>{recommendation.confidence} confidence</small></div>)}</div>}{analysis.missing_symbols.length > 0 && <p className="muted">Missing market data: {analysis.missing_symbols.join(", ")}</p>}<div className="allocation-list">{analysis.positions.map((position) => <div key={position.symbol}><strong>{position.symbol}</strong><span>{Number(position.allocation_percent).toFixed(2)}% allocation · ${Number(position.gain_loss).toFixed(2)} gain/loss</span></div>)}</div><div className="analysis-history"><div className="section-heading"><span>ANALYSIS HISTORY</span><span>{analysisHistory.length} RUNS</span></div>{analysisHistory.slice(0, 5).map((entry) => <button className={`history-entry ${entry.id === selectedAnalysisId ? "active" : ""}`} key={entry.id} onClick={() => { setSelectedAnalysisId(entry.id); setAnalysis(entry.metrics); }}><strong>{entry.id === analysisHistory[0]?.id ? "Latest run" : `Run ${entry.id}`}</strong><span>{new Date(entry.created_at).toLocaleString()} · {entry.market_provider}</span></button>)}</div></section>}
               <form className="panel portfolio-form" onSubmit={updatePortfolio}>
-                <div className="section-heading"><span>PROFILE SETTINGS</span><span>EDIT</span></div>
+                <div className="section-heading"><span>PROFILE SETTINGS</span><a className="workspace-link" href="/risk-profiles">WHAT DOES THIS MEAN? ↗</a></div>
                 <div className="field-grid"><label>Name<input required value={portfolioForm.name} onChange={(event) => setPortfolioForm({ ...portfolioForm, name: event.target.value })} /></label><label>Cash balance<input required min="0" step="0.01" type="number" value={portfolioForm.cash_balance} onChange={(event) => setPortfolioForm({ ...portfolioForm, cash_balance: event.target.value })} /></label><label>Risk profile<select value={portfolioForm.risk_profile} onChange={(event) => setPortfolioForm({ ...portfolioForm, risk_profile: event.target.value as RiskProfile })}><option value="conservative">Conservative</option><option value="balanced">Balanced</option><option value="aggressive">Aggressive</option></select></label></div>
                 <button className="primary small" disabled={saving}>Save settings</button>
               </form>

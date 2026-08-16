@@ -180,3 +180,17 @@ def test_analysis_preview_calculates_value_allocation_and_alerts(client: TestCli
     assert body["positions"][0]["market_value"] == "240.00000000"
     assert body["positions"][0]["gain_loss"] == "40.000000000000"
     assert body["alerts"]
+
+
+def test_analysis_is_saved_and_available_in_history(client: TestClient, monkeypatch) -> None:
+    portfolio = create_portfolio(client)
+    monkeypatch.setattr(market_data_provider, "get_quotes", lambda symbols: {})
+
+    response = client.post(f"/portfolios/{portfolio['id']}/analyze")
+
+    assert response.status_code == 201
+    assert response.json()["id"] > 0
+    history = client.get(f"/portfolios/{portfolio['id']}/analyses")
+    assert history.status_code == 200
+    assert len(history.json()) == 1
+    assert history.json()[0]["metrics"]["portfolio_id"] == portfolio["id"]

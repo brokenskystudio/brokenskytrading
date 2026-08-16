@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.seed import seed_security_catalog
 from app.models.portfolio import Holding, HoldingPurchase, Portfolio, utc_now
+from app.models.analysis import AnalysisSnapshot
 from app.schemas.portfolio import (
     HoldingCreate,
     HoldingResponse,
@@ -17,8 +19,9 @@ from app.schemas.portfolio import (
     PurchaseResponse,
 )
 from app.schemas.market_data import PortfolioQuotesResponse, QuoteResponse
-from app.schemas.analysis import AnalysisPreviewResponse
+from app.schemas.analysis import AnalysisPreviewResponse, SavedAnalysisResponse
 from app.services.portfolio_analysis import build_analysis
+from app.services.ai.local_provider import LocalAnalysisProvider
 from app.services.market_data.yfinance_provider import YFinanceProvider
 from app.models.security import Security
 from app.schemas.security import SecurityResponse
@@ -28,6 +31,13 @@ router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 holdings_router = APIRouter(prefix="/holdings", tags=["holdings"])
 market_data_router = APIRouter(prefix="/market-data", tags=["market-data"])
 market_data_provider = YFinanceProvider()
+analysis_provider = LocalAnalysisProvider()
+
+
+def create_analysis(portfolio: Portfolio, quotes: dict) -> dict:
+    metrics = build_analysis(portfolio, quotes)
+    metrics.update(analysis_provider.explain(metrics))
+    return metrics
 
 
 def get_portfolio_or_404(portfolio_id: int, db: Session) -> Portfolio:
@@ -94,7 +104,33 @@ def get_analysis_preview(portfolio_id: int, db: Session = Depends(get_db)) -> di
     portfolio = get_portfolio_or_404(portfolio_id, db)
     symbols = [holding.symbol for holding in portfolio.holdings]
     quotes = market_data_provider.get_quotes(symbols)
-    return build_analysis(portfolio, quotes)
+    return create_analysis(portfolio, quotes)
+
+
+@router.post("/{portfolio_id}/analyze", response_model=SavedAnalysisResponse, status_code=status.HTTP_201_CREATED)
+def analyze_portfolio(portfolio_id: int, db: Session = Depends(get_db)) -> dict:
+    portfolio = get_portfolio_or_404(portfolio_id, db)
+    symbols = [holding.symbol for holding in portfolio.holdings]
+    quotes = market_data_provider.get_quotes(symbols)
+    metrics = create_analysis(portfolio, quotes)
+    data_as_of = max((quote.data_as_of for quote in quotes.values()), default=utc_now())
+    snapshot = AnalysisSnapshot(
+        portfolio_id=portfolio.id,
+        data_as_of=data_as_of,
+        market_provider=next(iter(quotes.values())).provider if quotes else "Yahoo Finance via yfinance",
+        metrics_json=jsonable_encoder(metrics),
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return {"id": snapshot.id, "created_at": snapshot.created_at, "data_as_of": snapshot.data_as_of, "market_provider": snapshot.market_provider, "metrics": metrics}
+
+
+@router.get("/{portfolio_id}/analyses", response_model=list[SavedAnalysisResponse])
+def list_analyses(portfolio_id: int, db: Session = Depends(get_db)) -> list[dict]:
+    get_portfolio_or_404(portfolio_id, db)
+    snapshots = db.scalars(select(AnalysisSnapshot).where(AnalysisSnapshot.portfolio_id == portfolio_id).order_by(AnalysisSnapshot.created_at.desc())).all()
+    return [{"id": snapshot.id, "created_at": snapshot.created_at, "data_as_of": snapshot.data_as_of, "market_provider": snapshot.market_provider, "metrics": snapshot.metrics_json} for snapshot in snapshots]
 
 
 @router.put("/{portfolio_id}", response_model=PortfolioResponse)
