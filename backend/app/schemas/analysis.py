@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AnalysisPosition(BaseModel):
@@ -19,6 +19,14 @@ class AnalysisAlert(BaseModel):
     severity: str
     code: str
     message: str
+
+
+class AnalysisRecommendation(BaseModel):
+    action: str
+    symbol: str | None
+    reason: str
+    risks: list[str]
+    confidence: str
 
 
 class AnalysisPolicy(BaseModel):
@@ -39,3 +47,14 @@ class AnalysisPreviewResponse(BaseModel):
     alerts: list[AnalysisAlert]
     missing_symbols: list[str]
     policy: AnalysisPolicy
+    summary: str = ""
+    recommendations: list[AnalysisRecommendation] = Field(default_factory=list)
+    disclaimer: str = ""
+
+
+class SavedAnalysisResponse(BaseModel):
+    id: int
+    created_at: datetime
+    data_as_of: datetime
+    market_provider: str
+    metrics: AnalysisPreviewResponse
