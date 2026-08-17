@@ -315,7 +315,7 @@ SQLite decision: the MVP intentionally has no external database service. SQLAlch
 
 Acceptance: a user can create, edit, save, reload, and delete local portfolio holdings.
 
-Current status: portfolio and holding SQLAlchemy models, SQLite table creation, validated CRUD API routes, the frontend portfolio editor, isolated in-memory SQLite CRUD tests, a local security catalog with autocomplete and validation, a yfinance-backed quote adapter, deterministic analysis preview, saved analysis history, and a bounded local explanation provider are implemented. The quote adapter is explicitly local-only and replaceable.
+Current status: portfolio and holding SQLAlchemy models, SQLite table creation, validated CRUD API routes, the frontend portfolio editor, isolated in-memory SQLite CRUD tests, a local security catalog with autocomplete and validation, a cached yfinance-backed quote adapter, deterministic analysis preview, saved analysis history, a bounded local explanation provider, and portfolio-fit context are implemented. The quote adapter is explicitly local-only and replaceable.
 
 ### Phase 3: Market Data and Metrics
 

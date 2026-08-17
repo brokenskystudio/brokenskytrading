@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import SiteHeader from "../components/site-header";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -314,13 +315,7 @@ export default function Home() {
 
   return (
     <main className="shell" style={{ "--page-background": selectedPalette.background, "--surface": selectedPalette.surface, "--line": selectedPalette.line, "--ink": selectedPalette.ink, "--muted": selectedPalette.muted, "--accent": selectedPalette.accent, "--danger": selectedPalette.danger, "--button-ink": selectedPalette.buttonInk, "--input-background": selectedPalette.inputBackground, "--input-ink": selectedPalette.inputInk } as React.CSSProperties}>
-      <div className="studio-bar">
-        <a className="brand" href="/" aria-label="Go to Trading Research home">
-          <span className="brand-mark">BSS</span>
-          <span><strong>BROKEN SKY</strong><small>STUDIO / PRODUCT 01</small></span>
-        </a>
-        <span className="studio-owner">ALEJANDRO RESTREPO</span>
-      </div>
+      <SiteHeader />
       <header className="topbar">
         <div>
           <p className="eyebrow">BROKEN SKY STUDIO / LOCAL RESEARCH WORKSPACE</p>

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from decimal import Decimal
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -23,15 +24,70 @@ from app.schemas.analysis import AnalysisPreviewResponse, SavedAnalysisResponse
 from app.services.portfolio_analysis import build_analysis
 from app.services.ai.local_provider import LocalAnalysisProvider
 from app.services.market_data.yfinance_provider import YFinanceProvider
+from app.services.market_data.cached_provider import CachedMarketDataProvider
 from app.models.security import Security
 from app.schemas.security import SecurityResponse
+from app.schemas.market_research import ChartResponse, ComparisonSecurity, MarketOverviewResponse, SecurityResearchResponse
+from app.schemas.portfolio_fit import PortfolioFitResponse
+from typing import Literal
 
 
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 holdings_router = APIRouter(prefix="/holdings", tags=["holdings"])
 market_data_router = APIRouter(prefix="/market-data", tags=["market-data"])
-market_data_provider = YFinanceProvider()
+market_data_provider = CachedMarketDataProvider(YFinanceProvider())
 analysis_provider = LocalAnalysisProvider()
+
+
+@market_data_router.get("/overview", response_model=MarketOverviewResponse)
+def market_overview() -> dict:
+    benchmark_symbols = ["SPY", "QQQ", "IWM", "BND"]
+    quotes = market_data_provider.get_quotes(benchmark_symbols)
+    return {
+        "benchmarks": [QuoteResponse.model_validate(quote, from_attributes=True) for quote in quotes.values()],
+        "limitations": ["Market data is supplied by Yahoo Finance through the unofficial yfinance library.", "Prices may be delayed and are for research context only."],
+    }
+
+
+@market_data_router.get("/securities/{symbol}", response_model=SecurityResearchResponse)
+def security_research(symbol: str, db: Session = Depends(get_db)) -> dict:
+    security = db.scalar(select(Security).where(Security.symbol == symbol.strip().upper(), Security.is_active.is_(True)))
+    if security is None:
+        raise HTTPException(status_code=404, detail="Security not found in local catalog")
+    quote = market_data_provider.get_quotes([security.symbol]).get(security.symbol)
+    historical = market_data_provider.get_historical_context(security.symbol)
+    fundamentals = market_data_provider.get_fundamentals(security.symbol)
+    change_percent = None
+    signals = ["Insufficient recent price data"]
+    if quote and quote.previous_close:
+        change_percent = (quote.price - quote.previous_close) / quote.previous_close * 100
+        signals = ["Price increased from the previous close"] if change_percent > 0 else ["Price decreased from the previous close"] if change_percent < 0 else ["Price is unchanged from the previous close"]
+    return {
+        "security": security,
+        "quote": QuoteResponse.model_validate(quote, from_attributes=True) if quote else None,
+        "signals": signals,
+        "change_percent": change_percent,
+        "historical": historical or None,
+        "fundamentals": fundamentals or None,
+        "limitations": ["This view uses recent price context only; it is not a valuation or suitability assessment."],
+    }
+
+
+@market_data_router.get("/securities/{symbol}/chart", response_model=ChartResponse)
+def security_chart(symbol: str, range: Literal["1m", "6m", "1y", "2y"] = Query("1m"), db: Session = Depends(get_db)) -> dict:
+    security = db.scalar(select(Security).where(Security.symbol == symbol.strip().upper(), Security.is_active.is_(True)))
+    if security is None:
+        raise HTTPException(status_code=404, detail="Security not found in local catalog")
+    period, interval = {"1m": ("1mo", "1d"), "6m": ("6mo", "1wk"), "1y": ("1y", "1mo"), "2y": ("2y", "1mo")}[range]
+    return {"symbol": security.symbol, "range": range, "interval": interval, "points": market_data_provider.get_chart(security.symbol, period, interval), "provider": market_data_provider.name}
+
+
+@market_data_router.get("/compare", response_model=list[ComparisonSecurity])
+def compare_securities(symbols: str = Query(..., min_length=1), db: Session = Depends(get_db)) -> list[dict]:
+    requested = list(dict.fromkeys(symbol.strip().upper() for symbol in symbols.split(",") if symbol.strip()))[:4]
+    securities = list(db.scalars(select(Security).where(Security.symbol.in_(requested), Security.is_active.is_(True))).all())
+    quote_map = market_data_provider.get_quotes([security.symbol for security in securities])
+    return [{"security": security, "quote": QuoteResponse.model_validate(quote_map[security.symbol], from_attributes=True) if security.symbol in quote_map else None, "historical": market_data_provider.get_historical_context(security.symbol) or None, "fundamentals": market_data_provider.get_fundamentals(security.symbol) or None} for security in securities]
 
 
 def create_analysis(portfolio: Portfolio, quotes: dict) -> dict:
@@ -97,6 +153,29 @@ def get_portfolio_quotes(portfolio_id: int, db: Session = Depends(get_db)) -> Po
             "Quotes may be delayed and are intended for local research, not trade execution.",
         ],
     )
+
+
+@router.get("/{portfolio_id}/security-fit/{symbol}", response_model=PortfolioFitResponse)
+def portfolio_security_fit(portfolio_id: int, symbol: str, db: Session = Depends(get_db)) -> dict:
+    portfolio = get_portfolio_or_404(portfolio_id, db)
+    security = db.scalar(select(Security).where(Security.symbol == symbol.strip().upper(), Security.is_active.is_(True)))
+    if security is None:
+        raise HTTPException(status_code=404, detail="Security not found in local catalog")
+    holding_symbols = [holding.symbol for holding in portfolio.holdings]
+    quotes = market_data_provider.get_quotes(holding_symbols)
+    metrics = build_analysis(portfolio, quotes)
+    existing = next((position for position in metrics["positions"] if position["symbol"] == security.symbol), None)
+    fundamentals = market_data_provider.get_fundamentals(security.symbol)
+    current_types = {item.asset_type for item in [db.scalar(select(Security).where(Security.symbol == holding.symbol)) for holding in portfolio.holdings] if item}
+    sector = fundamentals.get("sector")
+    context = ["This view describes portfolio overlap; it does not assess whether the security should be purchased."]
+    if existing:
+        context.append("This security is already held in the portfolio.")
+    if security.asset_type in current_types:
+        context.append(f"The portfolio already contains {security.asset_type} exposure.")
+    if sector:
+        context.append(f"The catalog provider reports this security in the {sector} sector.")
+    return {"symbol": security.symbol, "portfolio_id": portfolio.id, "already_held": existing is not None, "current_quantity": next((holding.quantity for holding in portfolio.holdings if holding.symbol == security.symbol), Decimal("0")), "current_allocation_percent": existing["allocation_percent"] if existing else Decimal("0"), "asset_type": security.asset_type, "sector": sector, "portfolio_asset_type_overlap": security.asset_type in current_types, "portfolio_sector_overlap": False, "context": context}
 
 
 @router.get("/{portfolio_id}/analysis-preview", response_model=AnalysisPreviewResponse)

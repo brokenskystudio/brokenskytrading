@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SiteHeader from "./components/site-header";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const brandPalette = { background: "#F3E9D8", surface: "#E5D4BA", line: "#B99B78", ink: "#241A14", muted: "#634D3B", accent: "#854719", danger: "#963B2F" };
@@ -36,13 +37,7 @@ export default function Home() {
 
   return (
     <main className="shell dashboard-shell" style={{ "--page-background": brandPalette.background, "--surface": brandPalette.surface, "--line": brandPalette.line, "--ink": brandPalette.ink, "--muted": brandPalette.muted, "--accent": brandPalette.accent, "--danger": brandPalette.danger, "--button-ink": "#FFF8ED" } as React.CSSProperties}>
-      <div className="studio-bar">
-        <a className="brand" href="https://brokensky.studio" target="_blank" rel="noreferrer" aria-label="Broken Sky Studio website">
-          <span className="brand-mark">BSS</span>
-          <span><strong>BROKEN SKY</strong><small>STUDIO / PRODUCT 01</small></span>
-        </a>
-        <span className="studio-owner">ALEJANDRO RESTREPO</span>
-      </div>
+      <SiteHeader />
       <header className="dashboard-hero">
         <div><p className="eyebrow">BROKEN SKY STUDIO / OVERVIEW</p><h1>Your research<br />workspace.</h1></div>
         <p className="hero-copy">A quiet place to keep track of your investment portfolios and the questions worth researching next.</p>

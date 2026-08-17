@@ -37,3 +37,47 @@ class YFinanceProvider:
                 delayed=True,
             )
         return quotes
+
+    def get_historical_context(self, symbol: str) -> dict:
+        try:
+            history = yf.Ticker(symbol.strip().upper()).history(period="1y", interval="1d", auto_adjust=False)
+            closes = history["Close"].dropna()
+        except Exception:
+            return {}
+        if len(closes) < 2:
+            return {}
+        latest = Decimal(str(closes.iloc[-1]))
+        periods = {"1_week": 5, "1_month": 21, "6_months": 126, "1_year": len(closes) - 1}
+        performance = {}
+        for name, offset in periods.items():
+            start = Decimal(str(closes.iloc[max(0, len(closes) - 1 - offset)]))
+            performance[name] = ((latest - start) / start * 100) if start else Decimal("0")
+        daily_returns = closes.pct_change().dropna()
+        volatility = Decimal(str(float(daily_returns.std() * (252 ** 0.5) * 100)))
+        return {"performance": performance, "recent_high": Decimal(str(closes.max())), "recent_low": Decimal(str(closes.min())), "annualized_volatility": volatility, "period_start": closes.index[0].to_pydatetime(), "period_end": closes.index[-1].to_pydatetime()}
+
+    def get_chart(self, symbol: str, period: str, interval: str) -> list[dict]:
+        try:
+            source_interval = "1wk" if interval == "2wk" else interval
+            history = yf.Ticker(symbol.strip().upper()).history(period=period, interval=source_interval, auto_adjust=True)
+            closes = history["Close"].dropna()
+        except Exception:
+            return []
+        points = list(closes.items())[::2] if interval == "2wk" else list(closes.items())
+        return [{"date": index.to_pydatetime(), "close": Decimal(str(value))} for index, value in points]
+
+    def get_fundamentals(self, symbol: str) -> dict:
+        try:
+            info = yf.Ticker(symbol.strip().upper()).info
+        except Exception:
+            return {}
+        fields = {
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "market_cap": info.get("marketCap"),
+            "trailing_pe": info.get("trailingPE"),
+            "forward_pe": info.get("forwardPE"),
+            "dividend_yield": info.get("dividendYield"),
+            "expense_ratio": info.get("annualReportExpenseRatio"),
+        }
+        return {key: value for key, value in fields.items() if value is not None}

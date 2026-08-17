@@ -95,6 +95,15 @@ The application has a persistent light/dark switch. Light mode is the default. S
 - Include `Alejandro Restrepo` as the studio owner attribution where appropriate.
 - Footer links may include the LinkedIn placeholder and `brokensky.studio`.
 
+## Navigation
+
+- Use a compact global header across product pages.
+- Header order: `BSS` brand, primary links, creator attribution.
+- Current primary links: `Home`, `Market`, `Workspace`, and `Risk guide`.
+- Highlight the active section with the current theme accent and a subtle underline.
+- On mobile, collapse links behind a small `Menu` control.
+- Keep the header lightweight; do not use a permanent sidebar for global navigation.
+
 ## Content and Safety
 
 - Trading Research is an informational research tool.

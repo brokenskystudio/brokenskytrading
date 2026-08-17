@@ -32,6 +32,8 @@ The local MVP uses Yahoo Finance through `yfinance`. Quotes may be delayed, unof
 
 Security autocomplete uses the local SQLite catalog in `backend/app/data/securities.csv`; it does not call an external API while typing. The catalog is generated from the public Nasdaq Trader `nasdaqlisted` and `otherlisted` directories. It includes active, non-test listings for NASDAQ, NYSE, NYSE American, NYSE Arca, and Cboe BZX as of the snapshot date recorded in each row's `source` field.
 
+Market responses are cached in SQLite to reduce repeated yfinance requests. Quote data is cached briefly, historical charts for one hour, and fundamentals for one day.
+
 Refresh the catalog from the `backend` directory when network access is available:
 
 ```bash
